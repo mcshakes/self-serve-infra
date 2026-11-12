@@ -5,7 +5,6 @@ import { jobsArray } from "../stores/jobsStore.ts";
 
 router.get("/jobs/:id", (req: Request, res: Response) => {
   const { id } = req.params;
-  console.log(id)
 
   const job: Job | undefined = jobsArray.find(j => j.uuid === id);
 

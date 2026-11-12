@@ -1,18 +1,8 @@
 import express, { type Request, type Response } from 'express';
 const router = express.Router();
 import type { Job } from "../models/Job.ts";
+import type { Environment } from "../models/Environment.ts";
 import { jobsArray } from "../stores/jobsStore.ts";
-
-interface Environment {
-  uuid: string;
-  name: string;
-  template: string;
-  region: string;
-  instanceType: string;
-  instanceCount: number;
-  status: string;
-  createdAt: string;
-};
 
 interface EnvironmentApiResponse {
   success: boolean;
