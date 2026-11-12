@@ -1,6 +1,7 @@
 import express, { type Request, type Response } from 'express';
 const router = express.Router();
-
+import type { Job } from "../models/Job.ts";
+import { jobsArray } from "../stores/jobsStore.ts";
 
 interface Environment {
   uuid: string;
@@ -10,12 +11,13 @@ interface Environment {
   instanceType: string;
   instanceCount: number;
   status: string;
-  created_at: string;
+  createdAt: string;
 };
 
 interface EnvironmentApiResponse {
   success: boolean;
   data: Environment;
+  jobId?: string;
 }
 
 interface ApiError {
@@ -31,8 +33,6 @@ interface AllEnvironmentsResponse {
 const envArray: Environment[] = [];
 
 router.post("/environments", (req: Request, res: Response<EnvironmentApiResponse | ApiError>) => {
-  console.log(req.body)
-
   const { name, template, region, instanceType, instanceCount } = req.body;
 
   if (!name || !template || !region || !instanceType || !instanceCount) {
@@ -47,6 +47,8 @@ router.post("/environments", (req: Request, res: Response<EnvironmentApiResponse
     return res.status(400).json({ error: 'Wrong number of instances' });
   }
 
+  const createdAt = new Date().toISOString();
+
   const env: Environment = {
     uuid: crypto.randomUUID(),
     name,
@@ -55,14 +57,24 @@ router.post("/environments", (req: Request, res: Response<EnvironmentApiResponse
     instanceType,
     instanceCount,
     status: "pending",
-    created_at: new Date().toISOString()
+    createdAt
   };
 
+  const newJob: Job = {
+    uuid: crypto.randomUUID(),
+    environmentId: env.uuid,
+    type: "provision",
+    status: "queued",
+    createdAt
+  }
+
   envArray.push(env);
+  jobsArray.push(newJob);
 
   res.status(201).json({
     success: true,
-    data: env
+    data: env,
+    jobId: newJob.uuid
   });
 });
 
@@ -85,7 +97,7 @@ router.get("/environments/:id", (req: Request, res: Response<EnvironmentApiRespo
 
   res.status(200).json({
     success: true,
-    data: enviro
+    data: enviro,
   });
 })
 
