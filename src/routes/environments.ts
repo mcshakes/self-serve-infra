@@ -91,4 +91,21 @@ router.get("/environments/:id", (req: Request, res: Response<EnvironmentApiRespo
   });
 })
 
+router.get("/environments/:id/jobs", (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  const enviro: Environment | undefined = envArray.find(env => env.uuid === id);
+
+  if (!enviro) {
+    return res.status(404).json({ error: "Environment not found" });
+  }
+
+  const filteredJobs: Job[] = jobsArray.filter(job => job.environmentId === id);
+
+  res.status(200).json({
+    success: true,
+    data: filteredJobs,
+  });
+})
+
 export default router;
