@@ -20,6 +20,12 @@ interface AllEnvironmentsResponse {
   data: Environment[]
 }
 
+interface AssociatedEnvironmentJobsResponse {
+  success: boolean;
+  count: number;
+  data: Job[]
+}
+
 const envArray: Environment[] = [];
 
 router.post("/environments", (req: Request, res: Response<EnvironmentApiResponse | ApiError>) => {
@@ -91,7 +97,7 @@ router.get("/environments/:id", (req: Request, res: Response<EnvironmentApiRespo
   });
 })
 
-router.get("/environments/:id/jobs", (req: Request, res: Response) => {
+router.get("/environments/:id/jobs", (req: Request, res: Response<AssociatedEnvironmentJobsResponse | ApiError>) => {
   const { id } = req.params;
 
   const enviro: Environment | undefined = envArray.find(env => env.uuid === id);
@@ -104,7 +110,53 @@ router.get("/environments/:id/jobs", (req: Request, res: Response) => {
 
   res.status(200).json({
     success: true,
+    count: filteredJobs.length,
     data: filteredJobs,
+  });
+})
+
+
+router.delete("/environments/:id", (req: Request, res: Response<EnvironmentApiResponse | ApiError>) => {
+  const { id } = req.params;
+
+  const enviro: Environment | undefined = envArray.find(env => env.uuid === id);
+
+  if (!enviro) {
+    return res.status(404).json({ error: "Environment not found" });
+  }
+
+  if (enviro && ["destroy_pending", "destroyed"].includes(enviro.status)) {
+    return res.status(409).json({ error: "Environment already in process of being destroyed or destroyed" });
+  }
+
+  const activeJob = jobsArray.find(job =>
+    job.environmentId === id &&
+    ["queued", "running"].includes(job.status)
+  );
+
+  if (activeJob) {
+    return res.status(409).json({
+      error: "Environment has an active job"
+    });
+  }
+
+  const newJob: Job = {
+    uuid: crypto.randomUUID(),
+    environmentId: enviro.uuid,
+    type: "destroy",
+    status: "queued",
+    createdAt: new Date().toISOString()
+  }
+
+  jobsArray.push(newJob);
+
+  enviro.status = "destroy_pending";
+
+
+  res.status(202).json({
+    success: true,
+    data: enviro,
+    jobId: newJob.uuid
   });
 })
 
