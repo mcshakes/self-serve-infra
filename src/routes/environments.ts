@@ -3,6 +3,8 @@ const router = express.Router();
 import type { Job } from "../models/Job.ts";
 import type { Environment } from "../models/Environment.ts";
 import { jobsArray } from "../stores/jobsStore.ts";
+import { envArray } from "../stores/environmentStore.ts";
+import { processJob } from '../workers/jobWorker.ts';
 
 interface EnvironmentApiResponse {
   success: boolean;
@@ -25,8 +27,6 @@ interface AssociatedEnvironmentJobsResponse {
   count: number;
   data: Job[]
 }
-
-const envArray: Environment[] = [];
 
 router.post("/environments", (req: Request, res: Response<EnvironmentApiResponse | ApiError>) => {
   const { name, template, region, instanceType, instanceCount } = req.body;
@@ -66,6 +66,8 @@ router.post("/environments", (req: Request, res: Response<EnvironmentApiResponse
 
   envArray.push(env);
   jobsArray.push(newJob);
+
+  processJob(newJob.uuid);
 
   res.status(201).json({
     success: true,
@@ -149,7 +151,7 @@ router.delete("/environments/:id", (req: Request, res: Response<EnvironmentApiRe
   }
 
   jobsArray.push(newJob);
-
+  processJob(newJob.uuid);
   enviro.status = "destroy_pending";
 
 
