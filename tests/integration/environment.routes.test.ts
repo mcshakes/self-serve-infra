@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import app from "../../src/app.ts";
+import { jobsArray } from "../../src/stores/jobsStore.ts";
 import request from "supertest";
 
 describe("integration tests for environment api", () => {
@@ -117,5 +118,66 @@ describe("integration tests for environment api", () => {
          expect(response.body.error || response.body.errors).toBeDefined();
        }
      );
+  });
+
+  describe("DELETE /api/environments/:id", () => {
+    const validPayload = {
+      name: "dev-sandbox",
+      template: "ubuntu-vm",
+      region: "us-east-1",
+      instanceType: "t3.micro",
+      instanceCount: 1,
+    };
+
+    it("queues a destroy job and rejects a second delete", async () => {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+      const createResponse = await request(app)
+        .post("/api/environments")
+        .send(validPayload);
+
+      expect(createResponse.status).toBe(201);
+
+      const environmentId = createResponse.body.data.uuid;
+      const provisionJob = jobsArray.find((job) => job.uuid === createResponse.body.jobId);
+
+      expect(provisionJob).toBeDefined();
+      provisionJob!.status = "completed";
+
+      const deleteResponse = await request(app).delete(`/api/environments/${environmentId}`);
+
+      expect(deleteResponse.status).toBe(202);
+      expect(deleteResponse.body).toEqual({
+        success: true,
+        jobId: expect.stringMatching(uuidRegex),
+        data: {
+          ...validPayload,
+          uuid: environmentId,
+          status: "destroy_pending",
+          createdAt: createResponse.body.data.createdAt,
+        },
+      });
+      expect(deleteResponse.body.jobId).not.toBe(createResponse.body.jobId);
+
+      const destroyJobId = deleteResponse.body.jobId;
+      const jobResponse = await request(app).get(`/api/jobs/${destroyJobId}`);
+
+      expect(jobResponse.status).toBe(200);
+      expect(jobResponse.body).toEqual({
+        success: true,
+        data: {
+          uuid: destroyJobId,
+          environmentId,
+          type: "destroy",
+          status: "queued",
+          createdAt: expect.any(String),
+        },
+      });
+
+      const secondDelete = await request(app).delete(`/api/environments/${environmentId}`);
+
+      expect(secondDelete.status).toBe(409);
+      expect(secondDelete.body.error).toBeDefined();
+    });
   });
 });
