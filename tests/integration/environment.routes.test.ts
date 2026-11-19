@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import app from "../../src/app.ts";
+import { envArray } from "../../src/stores/environmentStore.ts";
 import { jobsArray } from "../../src/stores/jobsStore.ts";
 import request from "supertest";
 
@@ -55,7 +56,7 @@ describe("integration tests for environment api", () => {
           uuid: jobId,
           environmentId,
           type: "provision",
-          status: "queued",
+          status: "running",
           createdAt: expect.any(String),
         },
       });
@@ -169,7 +170,7 @@ describe("integration tests for environment api", () => {
           uuid: destroyJobId,
           environmentId,
           type: "destroy",
-          status: "queued",
+          status: "running",
           createdAt: expect.any(String),
         },
       });
@@ -179,5 +180,39 @@ describe("integration tests for environment api", () => {
       expect(secondDelete.status).toBe(409);
       expect(secondDelete.body.error).toBeDefined();
     });
+
+    it.each(["destroy_pending", "destroyed"])(
+      "returns 409 when the environment is already %s",
+      async (status) => {
+        const createResponse = await request(app)
+          .post("/api/environments")
+          .send(validPayload);
+
+        expect(createResponse.status).toBe(201);
+
+        const environmentId = createResponse.body.data.uuid;
+        const environment = envArray.find((env) => env.uuid === environmentId);
+        const provisionJob = jobsArray.find((job) => job.uuid === createResponse.body.jobId);
+
+        expect(environment).toBeDefined();
+        expect(provisionJob).toBeDefined();
+
+        provisionJob!.status = "completed";
+        environment!.status = status;
+
+        const jobsBefore = jobsArray.filter((job) => job.environmentId === environmentId);
+
+        const deleteResponse = await request(app).delete(`/api/environments/${environmentId}`);
+
+        const jobsAfter = jobsArray.filter((job) => job.environmentId === environmentId);
+
+        expect(deleteResponse.status).toBe(409);
+        expect(deleteResponse.body).toEqual({
+          error: "Environment already in process of being destroyed or destroyed",
+        });
+        expect(environment!.status).toBe(status);
+        expect(jobsAfter).toEqual(jobsBefore);
+      }
+    );
   });
 });
