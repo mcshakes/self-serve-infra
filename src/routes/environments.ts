@@ -151,8 +151,9 @@ router.delete("/environments/:id", (req: Request, res: Response<EnvironmentApiRe
   }
 
   jobsArray.push(newJob);
-  processJob(newJob.uuid);
   enviro.status = "destroy_pending";
+  processJob(newJob.uuid);
+
 
 
   res.status(202).json({

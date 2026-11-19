@@ -1,10 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import app from "../../src/app.ts";
 import { envArray } from "../../src/stores/environmentStore.ts";
 import { jobsArray } from "../../src/stores/jobsStore.ts";
 import request from "supertest";
 
 describe("integration tests for environment api", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   describe("POST /environments", () => {
     const validPayload = {
         name: 'dev-sandbox',
@@ -35,6 +39,37 @@ describe("integration tests for environment api", () => {
       });
       expect(new Date(response.body.data.createdAt).toISOString()).toBe(response.body.data.createdAt);
 
+    });
+
+    it("completes the provision job and activates the environment", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+      const createResponse = await request(app)
+        .post("/api/environments")
+        .send(validPayload);
+
+      expect(createResponse.status).toBe(201);
+
+      const environmentId = createResponse.body.data.uuid;
+      const jobId = createResponse.body.jobId;
+
+      const immediateJob = await request(app).get(`/api/jobs/${jobId}`);
+      const immediateEnvironment = await request(app).get(`/api/environments/${environmentId}`);
+
+      expect(immediateJob.status).toBe(200);
+      expect(immediateJob.body.data.status).toBe("running");
+      expect(immediateEnvironment.status).toBe(200);
+      expect(immediateEnvironment.body.data.status).toBe("pending");
+
+      await vi.advanceTimersByTimeAsync(3000);
+
+      const completedJob = await request(app).get(`/api/jobs/${jobId}`);
+      const activeEnvironment = await request(app).get(`/api/environments/${environmentId}`);
+
+      expect(completedJob.status).toBe(200);
+      expect(completedJob.body.data.status).toBe("completed");
+      expect(activeEnvironment.status).toBe(200);
+      expect(activeEnvironment.body.data.status).toBe("active");
     });
 
     it("creates a queued provision job linked to the environment", async () => {
@@ -179,6 +214,43 @@ describe("integration tests for environment api", () => {
 
       expect(secondDelete.status).toBe(409);
       expect(secondDelete.body.error).toBeDefined();
+    });
+
+    it("completes the destroy job and marks the environment destroyed", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+      const createResponse = await request(app)
+        .post("/api/environments")
+        .send(validPayload);
+
+      expect(createResponse.status).toBe(201);
+
+      const environmentId = createResponse.body.data.uuid;
+
+      await vi.advanceTimersByTimeAsync(3000);
+
+      const deleteResponse = await request(app).delete(`/api/environments/${environmentId}`);
+
+      expect(deleteResponse.status).toBe(202);
+
+      const destroyJobId = deleteResponse.body.jobId;
+      const immediateJob = await request(app).get(`/api/jobs/${destroyJobId}`);
+      const immediateEnvironment = await request(app).get(`/api/environments/${environmentId}`);
+
+      expect(immediateJob.status).toBe(200);
+      expect(immediateJob.body.data.status).toBe("running");
+      expect(immediateEnvironment.status).toBe(200);
+      expect(immediateEnvironment.body.data.status).toBe("destroy_pending");
+
+      await vi.advanceTimersByTimeAsync(3000);
+
+      const completedJob = await request(app).get(`/api/jobs/${destroyJobId}`);
+      const destroyedEnvironment = await request(app).get(`/api/environments/${environmentId}`);
+
+      expect(completedJob.status).toBe(200);
+      expect(completedJob.body.data.status).toBe("completed");
+      expect(destroyedEnvironment.status).toBe(200);
+      expect(destroyedEnvironment.body.data.status).toBe("destroyed");
     });
 
     it.each(["destroy_pending", "destroyed"])(
